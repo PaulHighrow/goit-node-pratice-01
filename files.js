@@ -1,70 +1,80 @@
 const fs = require("fs/promises");
 const path = require("path");
-const chalk = require("chalk");
+
 const dataValidate = require("./helpers/dataValidation");
 const checkExtension = require("./helpers/checkExtension");
 
-const createFile = async (fileName, content) => {
-  const data = {
-    fileName,
-    content,
-  };
+// get
+const getFiles = async (__, res) => {
+  try {
+    const dirPath = path.join(__dirname + "/files");
+    const result = await fs.readdir(dirPath);
+    if (!result.length) {
+      return res.status(404).json({ message: "No files in this directory!" });
+    }
+    return res.json({ message: "Success", files: result });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
-  const { error } = dataValidate(data);
+// post
+const createFile = async (req, res) => {
+  const { fileName, content } = req.body;
+
+  const { error } = dataValidate({ fileName, content });
   if (error) {
-    console.log(
-      chalk.red(`Please specify ${error.details[0].context.key} parameter!`)
-    );
+    res.status(400).json({
+      message: `Please specify ${error.details[0].context.key} parameter!`,
+    });
     return;
   }
 
   const { extension, validatedExtension } = checkExtension(fileName);
   if (!validatedExtension) {
-    console.log(
-      chalk.red(
-        `Sorry, this application doesn't support files with ${extension} extension!`
-      )
-    );
+    res.status(400).json({
+      message: `Sorry, this application doesn't support files with ${extension} extension!`,
+    });
     return;
   }
-  const filePath = path.join(__dirname + "/files", fileName);
-  console.log(filePath);
+
   try {
+    const filePath = path.join(__dirname + "/files", fileName);
     await fs.writeFile(filePath, content, "utf-8");
-    console.log(chalk.blue("File created successfully!"));
+    res.status(201).json({ message: "File created successfully!" });
   } catch (error) {
-    console.log(chalk.red(error));
+    console.log(error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-const getFiles = async () => {
+// getbyname
+const getFile = async (req, res) => {
+  const { fileName } = req.params;
   const dirPath = path.join(__dirname + "/files");
-  const result = await fs.readdir(dirPath);
-  if (!result.length) {
-    console.log(chalk.red("No files in this directory!"));
-    return;
+  try {
+    const result = await fs.readdir(dirPath);
+    if (!result.includes(fileName)) {
+      res.status(404).json({
+        message: "No such file in this directory",
+      });
+      return;
+    }
+    const filePath = path.join(__dirname + "/files/" + fileName);
+    const file = await fs.readFile(filePath, "utf-8");
+    const stats = await fs.stat(filePath);
+    res.json({
+      name: path.basename(fileName, path.extname(fileName)),
+      extension: path.extname(fileName),
+      content: file,
+      size: stats.size,
+      birthDate: stats.mtime,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Server error" });
   }
-  console.log(result);
-  return result;
-};
-
-const getFile = async (fileName) => {
-  const dirPath = path.join(__dirname + "/files");
-  const result = await fs.readdir(dirPath);
-  if (!result.includes(fileName)) {
-    console.log(chalk.red("No such file in this directory"));
-    return;
-  }
-  const filePath = path.join(__dirname + "/files/" + fileName);
-  const file = await fs.readFile(filePath, "utf-8");
-  const stats = await fs.stat(filePath);
-  console.log({
-    name: path.basename(fileName, path.extname(fileName)),
-    extension: path.extname(fileName),
-    content: file,
-    size: stats.size,
-    birthDate: stats.mtime,
-  });
 };
 
 module.exports = { createFile, getFiles, getFile };
